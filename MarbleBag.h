@@ -170,7 +170,7 @@ const int MarbleBag< NumMarbles >::GetNext()
 	constexpr std::uint64_t mask = 0xffffffffffffffffU;
 	const int result = m_roll();
 	int idx = static_cast< int >( result * divisor );
-	int remainder = result - ( sizeof( std::uint64_t ) * idx );
+	int remainder = result - ( NUM_BITS * idx );
 	for( int arrayIdx = 0; arrayIdx < arraySize; ++arrayIdx )
 	{
 		std::uint64_t currVal = m_removedMarbles[ idx ];
