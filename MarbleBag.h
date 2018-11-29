@@ -105,6 +105,11 @@ public:
 	/// Use to deserialize usage information
 	void SetUsageData( std::uint64_t* _inData, std::size_t _inNumElements );
 
+public:
+
+	/// If true, auto reset marble bag when empty
+	bool bAutoReset = { true };
+
 private:
 	
 	std::function< int() > m_roll;
@@ -164,6 +169,10 @@ const int MarbleBag< NumMarbles >::GetRemainingCount() const
 template< int NumMarbles >
 const int MarbleBag< NumMarbles >::GetNext()
 {
+	if( bAutoReset && !HasMarbles() )
+	{
+		Reset();
+	}
 	constexpr int arraySize = DoubleCeilToInt( 1.0 * NumMarbles / NUM_BITS );
 	constexpr int bitRange = NumMarbles < NUM_BITS ? NumMarbles : NUM_BITS;
 	constexpr double divisor = 1.0 / NUM_BITS;
