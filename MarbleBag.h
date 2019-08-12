@@ -1,14 +1,14 @@
 /**
 * Copyright (c) 2017 Andrew Nguyen, http://www.github.com/ravenwing1234
-* 
+*
 * This software is provided 'as-is', without any express or implied
 * warranty. In no event will the authors be held liable for any damages
 * arising from the use of this software.
-* 
+*
 * Permission is granted to anyone to use this software for any purpose,
 * including commercial applications, and to alter it and redistribute it
 * freely, subject to the following restrictions:
-* 
+*
 * 1. The origin of this software must not be misrepresented; you must not
 *    claim that you wrote the original software. If you use this software
 *    in a product, an acknowledgment in the product documentation would be
@@ -24,7 +24,7 @@
 * Move constructor and move assignment only, no copy.
 *
 * Created: Andrew Nguyen (8-11-2017)
-* 
+*
 * Usage:
 *	MarbleBag< 100 > will return values from [0, 99]
 *	MarbleBag< 100 > bag;														// Default constructed with chrono-based seed
@@ -37,32 +37,18 @@
 #pragma once
 
 #include <chrono>
-#include <array>
+#include <bitset>
 #include <functional>
 #include <random>
 
-namespace dark
+namespace crux
 {
-
-template< typename FloatType, typename IntType >
-inline constexpr IntType Ceil( FloatType val ) noexcept
-{
-	return static_cast< FloatType >( static_cast< IntType >( val ) ) == val ? static_cast< IntType >( val ) : static_cast< IntType >( val + 1 );
-}
-
-inline constexpr int DoubleCeilToInt( double val ) noexcept
-{
-	return Ceil< double, int >( val );
-}
-
 /// Utility for dependent probability of random integers.
 template< int NumMarbles >
 class MarbleBag
 {
-	static constexpr int NUM_BITS = { sizeof( std::uint64_t ) * 8 };
-
 public:
-	
+
 	/// Default Constructor
 	MarbleBag();
 
@@ -97,23 +83,15 @@ public:
 	template< typename RandomEngineType >
 	void SetRandomEngine( RandomEngineType&& randomEngine );
 
-	/// Get a pointer to internal data that tracks used marbles and the number of int64 elements in _outData and _outNumElements respectively
-	/// Use to serialize out usage information
-	const void GetUsageData( std::uint64_t* _outData, std::size_t& _outNumElements ) const;
-
-	/// Sets the internal marble usage data from _inData with the number of _inNumElements of int64
-	/// Use to deserialize usage information
-	void SetUsageData( std::uint64_t* _inData, std::size_t _inNumElements );
-
 public:
 
 	/// If true, auto reset marble bag when empty
 	bool bAutoReset = { true };
 
 private:
-	
+
 	std::function< int() > m_roll;
-	std::array< std::uint64_t, DoubleCeilToInt( 1.0 * NumMarbles / NUM_BITS ) > m_removedMarbles = {}; 
+	std::bitset< NumMarbles > m_removedMarbles;
 	int m_numRemoved = { 0 };
 };
 
@@ -126,21 +104,6 @@ private:
 //
 
 template< int NumMarbles >
-void MarbleBag< NumMarbles >::SetUsageData( std::uint64_t* _inData, std::size_t _inNumElements )
-{
-	int smallerSize = m_removedMarbles.size() > _inNumElements ? _inNumElements : m_removedMarbles.size();
-	m_removedMarbles.fill( 0 );
-	std::memcpy( m_removedMarbles.data(), _inData, smallerSize * sizeof( std::uint64_t ) );
-}
-
-template< int NumMarbles >
-const void MarbleBag< NumMarbles >::GetUsageData( std::uint64_t* _outData, std::size_t& _outNumElements ) const
-{
-	_outData = m_removedMarbles.data();
-	_outNumElements = m_removedMarbles.size();
-}
-
-template< int NumMarbles >
 template< typename RandomEngineType >
 void MarbleBag< NumMarbles >::SetRandomEngine( RandomEngineType&& randomEngine )
 {
@@ -150,7 +113,7 @@ void MarbleBag< NumMarbles >::SetRandomEngine( RandomEngineType&& randomEngine )
 template< int NumMarbles >
 void MarbleBag< NumMarbles >::Reset()
 {
-	m_removedMarbles.fill( 0 );
+	m_removedMarbles.reset();
 	m_numRemoved = 0;
 }
 
@@ -169,48 +132,37 @@ const int MarbleBag< NumMarbles >::GetRemainingCount() const
 template< int NumMarbles >
 const int MarbleBag< NumMarbles >::GetNext()
 {
-	if( bAutoReset && !HasMarbles() )
+	if( !HasMarbles() )
 	{
-		Reset();
-	}
-	constexpr int arraySize = DoubleCeilToInt( 1.0 * NumMarbles / NUM_BITS );
-	constexpr int bitRange = NumMarbles < NUM_BITS ? NumMarbles : NUM_BITS;
-	constexpr double divisor = 1.0 / NUM_BITS;
-	constexpr std::uint64_t mask = 0xffffffffffffffffU;
-	const int result = m_roll();
-	int idx = static_cast< int >( result * divisor );
-	int remainder = result - ( NUM_BITS * idx );
-	for( int arrayIdx = 0; arrayIdx < arraySize; ++arrayIdx )
-	{
-		std::uint64_t currVal = m_removedMarbles[ idx ];
-		if( currVal ^ mask )
+		if( bAutoReset )
 		{
-			std::uint64_t indexer;
-			for( int i = 0; i < bitRange; ++i )
-			{
-				indexer = 1LL << remainder;
-				if( ( indexer & currVal ) == 0 )
-				{
-					m_removedMarbles[ idx ] |= indexer;
-					++m_numRemoved;
-					return idx * NUM_BITS + remainder;
-				}
-				if( ++remainder >= bitRange )
-				{
-					remainder = 0;
-				}
-			}
+			Reset();
 		}
 		else
 		{
-			if( ++idx >= arraySize )
-			{
-				idx = 0;
-			}
-			remainder = 0;
+			return -1;
 		}
 	}
-	return -1;
+	int result = m_roll();
+	int numEmptyIndexesVisited = 0;
+
+	if( m_removedMarbles[ result ] )
+	{
+		while( numEmptyIndexesVisited < result )
+		{
+			if( ++result >= NumMarbles )
+			{
+				result = 0;
+			}
+			if( !m_removedMarbles[ result ] )
+			{
+				++numEmptyIndexesVisited;
+			}
+		}
+	}
+	++m_numRemoved;
+	m_removedMarbles[ result ] = true;
+	return result;
 }
 
 template< int NumMarbles >
