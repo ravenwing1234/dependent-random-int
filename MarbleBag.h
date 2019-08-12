@@ -148,7 +148,8 @@ const int MarbleBag< NumMarbles >::GetNext()
 
 	if( m_removedMarbles[ result ] )
 	{
-		while( numEmptyIndexesVisited < result )
+		int numToVisit = m_roll();
+		while( numEmptyIndexesVisited < numToVisit )
 		{
 			if( ++result >= NumMarbles )
 			{
