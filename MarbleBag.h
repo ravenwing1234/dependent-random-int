@@ -44,7 +44,7 @@
 namespace crux
 {
 /// Utility for dependent probability of random integers.
-template< int NumMarbles >
+template< int NumMarbles, typename RandomEngineType = std::default_random_engine >
 class MarbleBag
 {
 public:
@@ -53,19 +53,18 @@ public:
 	MarbleBag();
 
 	/// Constructor with move of random engine type
-	template< typename RandomEngineType >
 	MarbleBag( RandomEngineType&& randomEngine );
 
 	/// Destructor
 	~MarbleBag() = default;
 
 	/// No copy operations
-	MarbleBag( const MarbleBag< NumMarbles >& other ) = delete;
-	MarbleBag& operator=( const MarbleBag< NumMarbles >& other ) = delete;
+	MarbleBag( const MarbleBag< NumMarbles, RandomEngineType >& other ) = delete;
+	MarbleBag& operator=( const MarbleBag< NumMarbles, RandomEngineType >& other ) = delete;
 
 	/// Move operations
-	MarbleBag( MarbleBag< NumMarbles >&& other );
-	MarbleBag& operator=( MarbleBag< NumMarbles >&& other );
+	MarbleBag( MarbleBag< NumMarbles, RandomEngineType >&& other );
+	MarbleBag& operator=( MarbleBag< NumMarbles, RandomEngineType >&& other );
 
 	/// Returns next marble value. Returns -1 if no marbles remain. Use Reset() to restore marbles.
 	const int GetNext();
@@ -80,19 +79,22 @@ public:
 	void Reset();
 
 	/// Explicitly set random engine.
-	template< typename RandomEngineType >
 	void SetRandomEngine( RandomEngineType&& randomEngine );
+
+private:
+
+	int Roll();
+
+private:
+
+	RandomEngineType m_randomEngine;
+	std::bitset< NumMarbles > m_removedMarbles;
+	int m_numRemoved = { 0 };
 
 public:
 
 	/// If true, auto reset marble bag when empty
 	bool bAutoReset = { true };
-
-private:
-
-	std::function< int() > m_roll;
-	std::bitset< NumMarbles > m_removedMarbles;
-	int m_numRemoved = { 0 };
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -103,34 +105,33 @@ private:
 // Public 
 //
 
-template< int NumMarbles >
-template< typename RandomEngineType >
-void MarbleBag< NumMarbles >::SetRandomEngine( RandomEngineType&& randomEngine )
+template< int NumMarbles, typename RandomEngineType >
+void MarbleBag< NumMarbles, RandomEngineType >::SetRandomEngine( RandomEngineType&& randomEngine )
 {
-	m_roll = std::bind( std::uniform_int_distribution< int >( 0, NumMarbles - 1 ), std::forward< RandomEngineType >( randomEngine ) );
+	m_randomEngine = std::forward< RandomEngineType >( randomEngine );
 }
 
-template< int NumMarbles >
-void MarbleBag< NumMarbles >::Reset()
+template< int NumMarbles, typename RandomEngineType >
+void MarbleBag< NumMarbles, RandomEngineType >::Reset()
 {
 	m_removedMarbles.reset();
 	m_numRemoved = 0;
 }
 
-template< int NumMarbles >
-bool MarbleBag< NumMarbles >::HasMarbles() const
+template< int NumMarbles, typename RandomEngineType >
+bool MarbleBag< NumMarbles, RandomEngineType >::HasMarbles() const
 {
 	return GetRemainingCount() > 0;
 }
 
-template< int NumMarbles >
-const int MarbleBag< NumMarbles >::GetRemainingCount() const
+template< int NumMarbles, typename RandomEngineType >
+const int MarbleBag< NumMarbles, RandomEngineType >::GetRemainingCount() const
 {
 	return ( NumMarbles - m_numRemoved );
 }
 
-template< int NumMarbles >
-const int MarbleBag< NumMarbles >::GetNext()
+template< int NumMarbles, typename RandomEngineType >
+const int MarbleBag< NumMarbles, RandomEngineType >::GetNext()
 {
 	if( !HasMarbles() )
 	{
@@ -143,54 +144,60 @@ const int MarbleBag< NumMarbles >::GetNext()
 			return -1;
 		}
 	}
-	int result = m_roll();
+	int numToVisit = Roll();
+	int resultIdx = 0;
 	int numEmptyIndexesVisited = 0;
-
-	if( m_removedMarbles[ result ] )
+	while( numEmptyIndexesVisited < numToVisit )
 	{
-		int numToVisit = m_roll();
-		while( numEmptyIndexesVisited < numToVisit )
+		if( ++resultIdx >= NumMarbles )
 		{
-			if( ++result >= NumMarbles )
-			{
-				result = 0;
-			}
-			if( !m_removedMarbles[ result ] )
-			{
-				++numEmptyIndexesVisited;
-			}
+			resultIdx = 0;
+		}
+		if( !m_removedMarbles[ resultIdx ] )
+		{
+			++numEmptyIndexesVisited;
 		}
 	}
 	++m_numRemoved;
-	m_removedMarbles[ result ] = true;
-	return result;
+	m_removedMarbles[ resultIdx ] = true;
+	return resultIdx;
 }
 
-template< int NumMarbles >
-MarbleBag< NumMarbles >& MarbleBag< NumMarbles >::operator=( MarbleBag< NumMarbles >&& other )
+template< int NumMarbles, typename RandomEngineType >
+MarbleBag< NumMarbles, RandomEngineType >& MarbleBag< NumMarbles, RandomEngineType >::operator=( MarbleBag< NumMarbles, RandomEngineType >&& other )
 {
 	m_removedMarbles = std::move( other.m_removedMarbles );
-	m_roll = std::move( other.m_roll );
+	m_randomEngine = std::move( other.m_randomEngine );
 
 	return *this;
 }
 
-template< int NumMarbles >
-MarbleBag< NumMarbles >::MarbleBag( MarbleBag< NumMarbles >&& other )
+template< int NumMarbles, typename RandomEngineType >
+MarbleBag< NumMarbles, RandomEngineType >::MarbleBag( MarbleBag< NumMarbles, RandomEngineType >&& other )
 {
-	*this = std::forward< MarbleBag< NumMarbles > >( other );
+	*this = std::forward< MarbleBag< NumMarbles, RandomEngineType > >( other );
 }
 
-template< int NumMarbles >
-template< typename RandomEngineType >
-MarbleBag< NumMarbles >::MarbleBag( RandomEngineType&& randomEngine )
+template< int NumMarbles, typename RandomEngineType >
+MarbleBag< NumMarbles, RandomEngineType >::MarbleBag( RandomEngineType&& randomEngine )
 {
 	SetRandomEngine( ( std::forward< RandomEngineType >( randomEngine ) ) );
 }
 
-template< int NumMarbles >
-MarbleBag< NumMarbles >::MarbleBag()
+template< int NumMarbles, typename RandomEngineType >
+MarbleBag< NumMarbles, RandomEngineType >::MarbleBag()
 	: MarbleBag( std::move( std::default_random_engine{ static_cast< std::uint32_t >( std::chrono::system_clock::now().time_since_epoch().count() ) } ) )
 {}
+
+//
+// Private
+//
+
+template< int NumMarbles, typename RandomEngineType >
+int crux::MarbleBag< NumMarbles, RandomEngineType >::Roll()
+{
+	std::uniform_int_distribution< int > distribution( 1, NumMarbles - m_numRemoved );
+	return distribution( m_randomEngine );
+}
 
 }
